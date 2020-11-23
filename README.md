@@ -31,3 +31,7 @@ In the ".py" file you can analyze the implementation of the Bot and use of the m
 
 
 <img src="./PRINT_EXAMPLES/image_1.jpeg" height="700" width="350"> | <img src="./PRINT_EXAMPLES/image_2.jpeg" height="700" width="350">
+
+<img src="./PRINT_EXAMPLES/image_3.jpeg" height="700" width="350"> | <img src="./PRINT_EXAMPLES/image_4.jpeg" height="700" width="350">
+
+<img src="./PRINT_EXAMPLES/image_5.jpeg" height="700" width="350"> | <img src="./PRINT_EXAMPLES/image_6.jpeg" height="700" width="350">
