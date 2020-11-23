@@ -29,6 +29,8 @@ In the ".py" file you can analyze the implementation of the Bot and use of the m
 * Now all the information available helps him in his executive decisions.
 
 
+Here you can see some prints as an example of the solution:
+
 
 <img src="./PRINT_EXAMPLES/image_1.jpeg" height="600" width="300"> | <img src="./PRINT_EXAMPLES/image_2.jpeg" height="600" width="300">
 
