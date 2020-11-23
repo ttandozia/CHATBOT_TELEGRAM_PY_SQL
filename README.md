@@ -21,6 +21,9 @@ In the ".py" file you can analyze the implementation of the Bot and use of the m
 
 **Important:** This project was built for a Brazilian client, so the features, objects, and models have their names in Portuguese.
 
-**Conclusion:**
+**Conclusions**
 
-* 
+* Telegram API gives you a high-quality solution to improve your time of response to your clients;
+* The NLP was built in Portuguese, so there is not as much data available as I wanted relating to the target fo the project;
+* The database was not archived before this project and the owner did not have too much information to make better decisions;
+* Now all the information available helps him in his executive decisions.
