@@ -1,6 +1,6 @@
 **Hello!**
 
-Implementation of a Chatbot to work with Pizza orders. Built with Telegram API, pYTHON and sql. Using 2 approches with Machine Learning models:
+Implementation of a Chatbot to work with Pizza orders. Built with Telegram API, Python and sql. Using 2 approches with Machine Learning models:
 
 * To predict and suggest pizza toppings to clients;
 * To analyze post-sale feedback and comments.
