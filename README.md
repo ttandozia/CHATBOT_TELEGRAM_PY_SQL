@@ -30,4 +30,4 @@ In the ".py" file you can analyze the implementation of the Bot and use of the m
 
 
 
-<img src="./PRINT_EXAMPLES/image_1.jpeg" height="50" width="50">
+<img src="./PRINT_EXAMPLES/image_1.jpeg" height="250" width="250">
