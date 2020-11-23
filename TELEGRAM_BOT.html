@@ -1,0 +1,1266 @@
+<html>
+<head>
+<title>TCC_CHAT6.py</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #629755; font-style: italic;}
+.s1 { color: #a9b7c6;}
+.s2 { color: #808080;}
+.s3 { color: #cc7832;}
+.s4 { color: #6a8759;}
+.s5 { color: #6897bb;}
+</style>
+</head>
+<body bgcolor="#2b2b2b">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#606060" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+TCC_CHAT6.py</font>
+</center></td></tr></table>
+<pre><span class="s0">''' 
+TELEGRAM CHATBOT WITH MACHINE LEARNING 
+Implementation of a Chatbot to work with Pizza orders. 
+Built with Telegram API and use of 2 approches with Machine Learning models: 
+ 
+* To predict and suggest pizza toppings to clients; 
+* To analyze post-sale feedback and comments. 
+ 
+ 
+Models implemented: 
+ 
+* Random Forest; 
+* Logistic regression; 
+* Naive Bayes; 
+* KNN; 
+* Term Frequency-Inverse Document Frequency (TF-IDF); 
+* Bag of words (BOW). 
+The BOW and TF-IDF was made with a tweet file. 
+ 
+ 
+In this file you can analyze the implementation of the Bot and use of the models built in the Jupyter file. 
+ 
+ 
+Important: This project was built for a Brazilian client, so the features, objects, and models have 
+their names in Portuguese. 
+'''</span>
+
+
+<span class="s2"># Libraries</span>
+<span class="s3">import </span><span class="s1">logging</span>
+<span class="s3">import </span><span class="s1">math</span>
+<span class="s3">import </span><span class="s1">psycopg2</span>
+<span class="s3">import </span><span class="s1">pickle</span>
+<span class="s3">import </span><span class="s1">pandas </span><span class="s3">as </span><span class="s1">pd</span>
+<span class="s3">import </span><span class="s1">re</span>
+<span class="s3">import </span><span class="s1">datetime</span>
+<span class="s3">from </span><span class="s1">telegram </span><span class="s3">import </span><span class="s1">ReplyKeyboardMarkup</span><span class="s3">, </span><span class="s1">ChatAction</span>
+<span class="s3">from </span><span class="s1">telegram.ext </span><span class="s3">import </span><span class="s1">(Updater</span><span class="s3">, </span><span class="s1">CommandHandler</span><span class="s3">, </span><span class="s1">MessageHandler</span><span class="s3">, </span><span class="s1">Filters</span><span class="s3">, </span><span class="s1">ConversationHandler</span><span class="s3">, </span><span class="s1">BaseFilter)</span>
+<span class="s3">from </span><span class="s1">sklearn.ensemble </span><span class="s3">import </span><span class="s1">RandomForestClassifier</span>
+<span class="s3">from </span><span class="s1">sklearn.feature_extraction.text </span><span class="s3">import </span><span class="s1">CountVectorizer</span>
+<span class="s3">from </span><span class="s1">unicodedata </span><span class="s3">import </span><span class="s1">normalize</span>
+<span class="s3">import </span><span class="s1">requests</span>
+
+<span class="s2"># Standard data for chatbot</span>
+<span class="s1">token = </span><span class="s4">'telegram_tolken'</span>
+<span class="s1">logging.basicConfig(format=</span><span class="s4">'%(asctime)s - %(name)s - %(levelname)s - %(message)s'</span><span class="s3">, </span><span class="s1">level=logging.INFO)</span>
+<span class="s1">logger = logging.getLogger(__name__)</span>
+
+<span class="s2"># Postgres Database</span>
+<span class="s1">database = </span><span class="s4">'postgres'</span>
+<span class="s1">username = </span><span class="s4">'postgres'</span>
+<span class="s1">password = </span><span class="s4">'123456'</span>
+
+<span class="s2"># Predictors and word processing</span>
+<span class="s1">caminho = </span><span class="s4">'path'</span>
+
+<span class="s1">preditor_pizza = pickle.load(open(caminho + </span><span class="s4">'/preditor_pizza.pkl'</span><span class="s3">, </span><span class="s4">'rb'</span><span class="s1">))</span>
+<span class="s1">preditor_avaliacao = pickle.load(open(caminho + </span><span class="s4">'/preditor_avaliacao_bow.pkl'</span><span class="s3">, </span><span class="s4">'rb'</span><span class="s1">))</span>
+<span class="s1">bow = pickle.load(open(caminho + </span><span class="s4">'/bow.pkl'</span><span class="s3">, </span><span class="s4">'rb'</span><span class="s1">))</span>
+<span class="s1">stop_words = list(pd.read_csv(caminho + </span><span class="s4">'/stop_word.csv'</span><span class="s3">, </span><span class="s1">encoding=</span><span class="s4">'Latin1'</span><span class="s3">, </span><span class="s1">sep =</span><span class="s4">';'</span><span class="s1">))</span>
+
+
+<span class="s2"># List of interactions for use in MAIN</span>
+<span class="s1">PRIM_INTERACAO</span><span class="s3">, </span><span class="s1">PRIM_ITERACAO_DIGITE</span><span class="s3">, </span><span class="s1">PRIM_ITERACAO_DIGITE2</span><span class="s3">, </span><span class="s1">PRIM_ITERACAO_DIGITE3</span><span class="s3">, </span><span class="s1">\</span>
+<span class="s1">CARDAPIO_OPCOES</span><span class="s3">, </span><span class="s1">CHOOSING_GENDER</span><span class="s3">, </span><span class="s1">PIZZA_OPCOES</span><span class="s3">, </span><span class="s1">DOCES_OPCOES</span><span class="s3">, </span><span class="s1">ADICIONAR</span><span class="s3">, </span><span class="s1">FINALIZAR_COMPRA</span><span class="s3">, </span><span class="s1">FORMAS_PGTO</span><span class="s3">, </span><span class="s1">\</span>
+<span class="s1">MOTIVO_FIM</span><span class="s3">, </span><span class="s1">FIM_PEDIDO</span><span class="s3">, </span><span class="s1">BEBIDAS_OPCOES</span><span class="s3">, </span><span class="s1">TESTE</span><span class="s3">, </span><span class="s1">CAD_NOME</span><span class="s3">, </span><span class="s1">CAD_CPF</span><span class="s3">, </span><span class="s1">CAD_CEP</span><span class="s3">, </span><span class="s1">CAD_GENERO</span><span class="s3">, </span><span class="s1">CAD_IDADE</span><span class="s3">, </span><span class="s1">\</span>
+<span class="s1">CAD_TEL</span><span class="s3">, </span><span class="s1">FIM_CAD</span><span class="s3">, </span><span class="s1">TROCO_PARA</span><span class="s3">, </span><span class="s1">TAMANHO</span><span class="s3">, </span><span class="s1">NUM_SABORES</span><span class="s3">, </span><span class="s1">ADD_ITEM</span><span class="s3">, </span><span class="s1">QTD_PEDIDO</span><span class="s3">, </span><span class="s1">VALID_RUA</span><span class="s3">, </span><span class="s1">DIGITA_NUMERO</span><span class="s3">, </span><span class="s1">\</span>
+<span class="s1">DIGITA_COMPLEMENTO</span><span class="s3">, </span><span class="s1">TROCA_RUA</span><span class="s3">, </span><span class="s1">CONFIRMACAO</span><span class="s3">, </span><span class="s1">ALTERAR_CAD</span><span class="s3">, </span><span class="s1">OBSERVACAO</span><span class="s3">,</span><span class="s1">NOTA_PIZZA = range(</span><span class="s5">35</span><span class="s1">)</span>
+
+
+<span class="s2"># Button List</span>
+<span class="s1">reply_keyboard = [[</span><span class="s4">'QUANTAS 🍕 ❓'</span><span class="s3">, </span><span class="s4">'CARDÁPIO ✏'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">[</span><span class="s4">'INFORMAÇÕES 💡'</span><span class="s3">, </span><span class="s4">'FINALIZAR 🙋'</span><span class="s1">]]</span>
+<span class="s2">#reply_keyboard = [['CALCULADORA 📱', 'CARDÁPIO ✏'],['CADASTRO 📑','INFORMAÇÕES 💡', 'FINALIZAR 🙋']]</span>
+<span class="s1">markup = ReplyKeyboardMarkup(reply_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">cardapio_keyboard = [[</span><span class="s4">'TRADICIONAIS 🍕'</span><span class="s3">, </span><span class="s4">'DOCES 🍫'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">[</span><span class="s4">'BEBIDAS 🥤'</span><span class="s1">]]</span>
+<span class="s1">markup_card = ReplyKeyboardMarkup(cardapio_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">tamanho_keyboard = [[</span><span class="s4">'GRANDE - 8 PEDAÇOS'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">[</span><span class="s4">'BROTO - 4 PEDAÇOS'</span><span class="s1">]]</span>
+<span class="s1">tamanho_markup = ReplyKeyboardMarkup(tamanho_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">sabores_keyboard = [[</span><span class="s4">'1 SABOR'</span><span class="s3">, </span><span class="s4">'2 SABORES'</span><span class="s1">]]</span>
+<span class="s1">sabores_markup = ReplyKeyboardMarkup(sabores_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">adic_rem_keyboard = [[</span><span class="s4">'ADICIONAR ☝ '</span><span class="s3">, </span><span class="s4">'REMOVER ❌'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">[</span><span class="s4">'FINALIZAR PEDIDO ✅'</span><span class="s1">]]</span>
+<span class="s1">markup_adic = ReplyKeyboardMarkup(adic_rem_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">confir_pedido = [[</span><span class="s4">'ADICIONAR ☝ '</span><span class="s3">, </span><span class="s4">'REMOVER ❌'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">[</span><span class="s4">'CONFIRMAR COMPRA ✅'</span><span class="s1">]]</span>
+<span class="s1">markup_confir = ReplyKeyboardMarkup(confir_pedido</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">pgto_keyboard = [[</span><span class="s4">'CRÉDITO'</span><span class="s3">, </span><span class="s4">'DÉBITO'</span><span class="s3">,</span><span class="s4">'DINHEIRO'</span><span class="s1">]]</span>
+<span class="s1">markup_pgto = ReplyKeyboardMarkup(pgto_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">rua_keyboard = [[</span><span class="s4">'SIM'</span><span class="s3">,</span><span class="s4">'NÃO'</span><span class="s1">]]</span>
+<span class="s1">markup_rua = ReplyKeyboardMarkup(rua_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">confirm_keyboard = [[</span><span class="s4">'SIM!'</span><span class="s3">,</span><span class="s4">'NÃO!'</span><span class="s1">]]</span>
+<span class="s1">markup_confirm = ReplyKeyboardMarkup(confirm_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s1">cadastro_keyboard = [[</span><span class="s4">'NOME'</span><span class="s3">,</span><span class="s4">'CPF'</span><span class="s3">,</span><span class="s4">'NASCIMENTO'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">[</span><span class="s4">'CEP'</span><span class="s3">,</span><span class="s4">'RUA'</span><span class="s3">,</span><span class="s4">'NUMERO'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">[</span><span class="s4">'COMPLEMENTO'</span><span class="s3">,</span><span class="s4">'TELEFONE'</span><span class="s3">,</span><span class="s4">'GENERO'</span><span class="s1">]]</span>
+<span class="s1">markup_cadastro = ReplyKeyboardMarkup(cadastro_keyboard</span><span class="s3">, </span><span class="s1">one_time_keyboard=</span><span class="s3">True,</span><span class="s1">resize_keyboard=</span><span class="s3">True</span><span class="s1">)</span>
+
+<span class="s2"># Database</span>
+<span class="s3">def </span><span class="s1">criando_bdados(database</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password):</span>
+
+    <span class="s2"># The first step is to download PGAdmin and create the chatizza database. After that the code creates the data.</span>
+    <span class="s1">con = psycopg2.connect(host=</span><span class="s4">'localhost'</span><span class="s3">, </span><span class="s1">database=database</span><span class="s3">, </span><span class="s1">user=username</span><span class="s3">, </span><span class="s1">password=password)</span>
+    <span class="s1">cur = con.cursor()</span>
+
+    <span class="s2"># creating the registration table</span>
+    <span class="s1">sql = </span><span class="s4">'CREATE TABLE IF NOT EXISTS cadastro (TELEGRAMID int primary key,' </span><span class="s1">\</span>
+          <span class="s4">'NOME varchar (30),' </span><span class="s1">\</span>
+          <span class="s4">'CPF varchar (20),' </span><span class="s1">\</span>
+          <span class="s4">'DTNASC varchar(10),' </span><span class="s1">\</span>
+          <span class="s4">'GENERO varchar (15),' </span><span class="s1">\</span>
+          <span class="s4">'CEP varchar(9),' </span><span class="s1">\</span>
+          <span class="s4">'RUA varchar(200),' </span><span class="s1">\</span>
+          <span class="s4">'NUMERO varchar(10),' </span><span class="s1">\</span>
+          <span class="s4">'COMPLEMENTO varchar(50),' </span><span class="s1">\</span>
+          <span class="s4">'TELEFONE varchar (15) NOT NULL)'</span>
+    <span class="s1">cur.execute(sql)</span>
+
+    <span class="s2"># creating the pizza table</span>
+    <span class="s1">sql = </span><span class="s4">'CREATE TABLE IF NOT EXISTS pizzas (ID_PRODUTO int primary key,' </span><span class="s1">\</span>
+          <span class="s4">'NOME varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'TIPO varchar(15),' </span><span class="s1">\</span>
+          <span class="s4">'VALOR_REAL money)'</span>
+    <span class="s1">cur.execute(sql)</span>
+
+    <span class="s2"># creating the ingredients table</span>
+    <span class="s2">#sql = 'CREATE TABLE IF NOT EXISTS ingredientes (ID_PRODUTO int primary key,' \</span>
+    <span class="s2">#      'TELEGRAMID int, ' \</span>
+    <span class="s2">#      'NOME varchar (50),' \</span>
+    <span class="s2">#      'QUANTIDADE int,' \</span>
+    <span class="s2">#      'VALOR_REAL money)'</span>
+    <span class="s2">#cur.execute(sql)</span>
+
+    <span class="s2"># creating the sweet pizza table</span>
+    <span class="s1">sql = </span><span class="s4">'CREATE TABLE IF NOT EXISTS doces (ID_PRODUTO int primary key,' </span><span class="s1">\</span>
+          <span class="s4">'NOME varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'TIPO varchar(15),' </span><span class="s1">\</span>
+          <span class="s4">'VALOR_REAL money)'</span>
+    <span class="s1">cur.execute(sql)</span>
+
+    <span class="s2"># creating the drinks table</span>
+    <span class="s1">sql = </span><span class="s4">'CREATE TABLE IF NOT EXISTS bebidas (ID_PRODUTO int primary key,' </span><span class="s1">\</span>
+          <span class="s4">'NOME varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'TIPO varchar(15),' </span><span class="s1">\</span>
+          <span class="s4">'VALOR_REAL money)'</span>
+    <span class="s1">cur.execute(sql)</span>
+
+    <span class="s2"># creating the cart items table</span>
+    <span class="s1">sql = </span><span class="s4">'CREATE TABLE IF NOT EXISTS carrinho (item_pedido serial,' </span><span class="s1">\</span>
+          <span class="s4">'TELEGRAMID int,' </span><span class="s1">\</span>
+          <span class="s4">'ID_PRODUTO int,' </span><span class="s1">\</span>
+          <span class="s4">'TIPO varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'TIPO2 varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'TAMANHO varchar(20),' </span><span class="s1">\</span>
+          <span class="s4">'NOME varchar (50),' </span><span class="s1">\</span>
+          <span class="s4">'QUANTIDADE float,' </span><span class="s1">\</span>
+          <span class="s4">'VALOR_REAL money)'</span>
+    <span class="s1">cur.execute(sql)</span>
+
+    <span class="s2"># creating the orders table</span>
+    <span class="s1">sql = </span><span class="s4">'CREATE TABLE IF NOT EXISTS pedidos (ID_PEDIDO int,' </span><span class="s1">\</span>
+          <span class="s4">'ID_PEDIDO_CLIENTE int,' </span><span class="s1">\</span>
+          <span class="s4">'DATA date,' </span><span class="s1">\</span>
+          <span class="s4">'HORA time,' </span><span class="s1">\</span>
+          <span class="s4">'TELEGRAMID int,' </span><span class="s1">\</span>
+          <span class="s4">'ID_PRODUTO int,' </span><span class="s1">\</span>
+          <span class="s4">'TIPO varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'TIPO2 varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'TAMANHO varchar(20),' </span><span class="s1">\</span>
+          <span class="s4">'NOME varchar (100),' </span><span class="s1">\</span>
+          <span class="s4">'QUANTIDADE float,' </span><span class="s1">\</span>
+          <span class="s4">'FORMA_PAGTO varchar(30),' </span><span class="s1">\</span>
+          <span class="s4">'OBSERVACAO varchar(500),' </span><span class="s1">\</span>
+          <span class="s4">'VALOR_UNITARIO money,' </span><span class="s1">\</span>
+          <span class="s4">'VALOR_TOTAL money,' </span><span class="s1">\</span>
+          <span class="s4">'VALOR_COMPRA money,' </span><span class="s1">\</span>
+          <span class="s4">'TROCO money)'</span>
+    <span class="s1">cur.execute(sql)</span>
+
+    <span class="s2"># creating the table of evaluations and feedbacks</span>
+    <span class="s1">sql = </span><span class="s4">'CREATE TABLE IF NOT EXISTS avaliacoes (ID_PEDIDO int,' </span><span class="s1">\</span>
+          <span class="s4">'ID_PEDIDO_CLIENTE int,' </span><span class="s1">\</span>
+          <span class="s4">'TELEGRAMID int,' </span><span class="s1">\</span>
+          <span class="s4">'NOTA_ATENDIMENTO int,' </span><span class="s1">\</span>
+          <span class="s4">'AVALIACAO_ATENDIMENTO VARCHAR(500),' </span><span class="s1">\</span>
+          <span class="s4">'NLP_ATENDIMENTO VARCHAR(20),' </span><span class="s1">\</span>
+          <span class="s4">'NOTA_PIZZA int,' </span><span class="s1">\</span>
+          <span class="s4">'AVALIACAO_PIZZA VARCHAR(500),' </span><span class="s1">\</span>
+          <span class="s4">'NLP_PIZZA VARCHAR(20))'</span>
+    <span class="s1">cur.execute(sql)</span>
+
+    <span class="s1">con.commit()</span>
+    <span class="s1">con.close()</span>
+
+<span class="s2"># Functions (def)</span>
+<span class="s2"># DEFs from database</span>
+<span class="s3">def </span><span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">codsql</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password):</span>
+    <span class="s1">con = psycopg2.connect(host=</span><span class="s4">'localhost'</span><span class="s3">, </span><span class="s1">database=database</span><span class="s3">, </span><span class="s1">user=username</span><span class="s3">, </span><span class="s1">password=password)</span>
+    <span class="s1">cur = con.cursor()</span>
+    <span class="s1">cur.execute(codsql)</span>
+    <span class="s1">con.commit()</span>
+    <span class="s1">con.close()</span>
+
+
+<span class="s3">def </span><span class="s1">select_bdados(database</span><span class="s3">, </span><span class="s1">codsql</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password):</span>
+    <span class="s1">con = psycopg2.connect(host=</span><span class="s4">'localhost'</span><span class="s3">, </span><span class="s1">database=database</span><span class="s3">, </span><span class="s1">user=username</span><span class="s3">, </span><span class="s1">password=password)</span>
+    <span class="s1">cur = con.cursor()</span>
+    <span class="s1">cur.execute(codsql)</span>
+    <span class="s1">recset = cur.fetchall()</span>
+    <span class="s3">return </span><span class="s1">recset</span>
+
+
+<span class="s3">def </span><span class="s1">update_bdados(database</span><span class="s3">, </span><span class="s1">codsql</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password):</span>
+    <span class="s1">con = psycopg2.connect(host=</span><span class="s4">'localhost'</span><span class="s3">, </span><span class="s1">database=database</span><span class="s3">, </span><span class="s1">user=username</span><span class="s3">, </span><span class="s1">password=password)</span>
+    <span class="s1">cur = con.cursor()</span>
+    <span class="s1">cur.execute(codsql)</span>
+    <span class="s1">con.commit()</span>
+    <span class="s1">con.close()</span>
+    <span class="s2">#recset = cur.fetchall()</span>
+    <span class="s2">#return recset</span>
+
+<span class="s2"># DEFs for start and error</span>
+<span class="s3">class </span><span class="s1">StartFilter(BaseFilter):</span>
+    <span class="s3">def </span><span class="s1">filter(self</span><span class="s3">, </span><span class="s1">message):</span>
+        <span class="s3">if </span><span class="s1">message.text.lower() </span><span class="s3">in </span><span class="s1">[</span><span class="s4">'oi'</span><span class="s3">,</span><span class="s4">'ola'</span><span class="s3">,</span><span class="s4">'pizza'</span><span class="s3">,</span><span class="s4">'quero'</span><span class="s1">]:</span>
+            <span class="s3">return True</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s3">return False</span>
+
+<span class="s3">class </span><span class="s1">EndFilter(BaseFilter):</span>
+    <span class="s3">def </span><span class="s1">filter(self</span><span class="s3">, </span><span class="s1">message):</span>
+        <span class="s3">if </span><span class="s1">message.text.lower() </span><span class="s3">in </span><span class="s1">[</span><span class="s4">'finalizar'</span><span class="s1">]:</span>
+            <span class="s3">return True</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s3">return False</span>
+
+<span class="s3">def </span><span class="s1">start(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data.clear()</span>
+    <span class="s1">logger.info(</span><span class="s4">'alguém iniciou uma conversa'</span><span class="s1">)</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Olá! Só um momento que estou buscando seu cadastro.'&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                              <span class="s4">&quot;Caso queira finalizar o atendimento basta digitar 'finalizar' a qualquer momento.&quot;</span><span class="s1">)</span>
+    <span class="s2"># SQL</span>
+    <span class="s1">user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">] = str(update.message.from_user[</span><span class="s4">'id'</span><span class="s1">])</span>
+    <span class="s1">user_data[</span><span class="s4">'NICKNAME'</span><span class="s1">] = str(update.message.from_user[</span><span class="s4">'first_name'</span><span class="s1">])</span>
+    <span class="s1">select = </span><span class="s4">'select * from cadastro where telegramID = ' </span><span class="s1">+ user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]</span>
+    <span class="s1">resultado = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+    <span class="s3">if </span><span class="s1">len(resultado) == </span><span class="s5">0</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span>
+            <span class="s4">'Olá '</span><span class="s1">+ user_data[</span><span class="s4">'NICKNAME'</span><span class="s1">] +</span><span class="s4">', Não localizamos seu cadastro. Precisaremos de algumas informações suas, ok?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">cadastro(update)</span>
+    <span class="s3">return </span><span class="s1">saudacao(update</span><span class="s3">, </span><span class="s1">context)</span>
+
+
+<span class="s3">def </span><span class="s1">error(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s0">&quot;&quot;&quot;Log Errors caused by Updates.&quot;&quot;&quot;</span>
+    <span class="s1">logger.warning(</span><span class="s4">'Update &quot;%s&quot; caused error &quot;%s&quot;'</span><span class="s3">, </span><span class="s1">update</span><span class="s3">, </span><span class="s1">context.error)</span>
+
+<span class="s2"># DEFs for register</span>
+<span class="s3">def </span><span class="s1">cadastro(update):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'É rapidinho.''</span><span class="s3">\n</span><span class="s4">''Por favor, me informe seu nome completo.'</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">CAD_NOME</span>
+
+
+<span class="s3">def </span><span class="s1">armazena_nome(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'NOME'</span><span class="s1">] = update.message.text.upper()</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;NOME - {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                              <span class="s4">&quot;E qual seu CPF {}? Por favor, preecha somente números&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'NOME'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">\</span>
+                                                                                             <span class="s1">user_data[</span><span class="s4">'NICKNAME'</span><span class="s1">]))</span>
+    <span class="s3">return </span><span class="s1">CAD_CPF</span>
+
+
+<span class="s3">def </span><span class="s1">armazena_cpf(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(update.message.text)</span>
+        <span class="s3">if </span><span class="s5">11 </span><span class="s1">&lt;= len(update.message.text) &lt;= </span><span class="s5">14</span><span class="s1">:</span>
+            <span class="s1">user_data[</span><span class="s4">'CPF'</span><span class="s1">] = update.message.text</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Certo.&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;CPF - {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                      <span class="s4">&quot;Já está terminando, prometo.&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                      <span class="s4">&quot;E qual seu CEP? Por favor, digite apenas números&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'CPF'</span><span class="s1">]))</span>
+            <span class="s3">return </span><span class="s1">CAD_CEP</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">update.message.reply_text(</span>
+                <span class="s4">'Não entendi, quantidade de caracteres incorreta, cpf possui 11 digitos e cnpj 14. Qual seu CPF?'</span><span class="s1">)</span>
+            <span class="s3">return </span><span class="s1">CAD_CPF</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números (por exemplo 39423456799). Qual seu CPF?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">CAD_CPF</span>
+
+
+<span class="s3">def </span><span class="s1">armazena_cep(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'CEP'</span><span class="s1">] = update.message.text</span>
+    <span class="s1">user_data[</span><span class="s4">'VALID_END'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(update.message.text)</span>
+        <span class="s1">consulta_end = requests.get(</span><span class="s4">'https://viacep.com.br/ws/' </span><span class="s1">+ user_data[</span><span class="s4">'CEP'</span><span class="s1">] + </span><span class="s4">'/json/'</span><span class="s1">).json()</span>
+        <span class="s1">user_data[</span><span class="s4">'RUA'</span><span class="s1">] = str(consulta_end[</span><span class="s4">'logradouro'</span><span class="s1">].replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+        <span class="s1">user_data[</span><span class="s4">'BAIRRO'</span><span class="s1">] = str(consulta_end[</span><span class="s4">'bairro'</span><span class="s1">].replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+        <span class="s1">user_data[</span><span class="s4">'CIDADE'</span><span class="s1">] = str(consulta_end[</span><span class="s4">'localidade'</span><span class="s1">].replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+        <span class="s1">user_data[</span><span class="s4">'UF'</span><span class="s1">] = str(consulta_end[</span><span class="s4">'uf'</span><span class="s1">].replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+        <span class="s3">if </span><span class="s1">len(update.message.text) == </span><span class="s5">8</span><span class="s1">:</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;CEP - {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                      <span class="s4">&quot;Sua rua é {} ?&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'CEP'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">user_data[</span><span class="s4">'RUA'</span><span class="s1">])</span><span class="s3">,</span>
+                                      <span class="s1">reply_markup=markup_rua)</span>
+            <span class="s3">return </span><span class="s1">VALID_RUA</span>
+
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">update.message.reply_text(</span>
+            <span class="s4">'Não entendi, quantidade de caracteres incorreta (tem que ser 8). Qual seu CEP?'</span><span class="s1">)</span>
+            <span class="s3">return </span><span class="s1">CAD_CEP</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números sem pontos ou traço (por exemplo 17012543).&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;'</span>
+                                  <span class="s4">'&quot;Qual seu CEP?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">CAD_CEP</span>
+
+
+<span class="s3">def </span><span class="s1">pass_numero(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Qual o número da residência? Por favor digite apenas números.'</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">DIGITA_NUMERO</span>
+
+<span class="s3">def </span><span class="s1">troca_rua(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Beleza, qual o nome correto da rua?'</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">TROCA_RUA</span>
+
+<span class="s3">def </span><span class="s1">guarda_rua(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'RUA'</span><span class="s1">] = update.message.text</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Certo, ajustamos o nome da rua aqui.&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; '</span>
+                              <span class="s4">'&quot;Qual o número da residência? Por favor digite apenas números.'</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">DIGITA_NUMERO</span>
+
+<span class="s3">def </span><span class="s1">armazena_numero(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(update.message.text)</span>
+        <span class="s1">user_data[</span><span class="s4">'NUMERO'</span><span class="s1">] = update.message.text</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;NUMERO - {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;Certo, tem algum complemento?&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                  <span class="s4">&quot;Se não tiver, só digitar 'não'.&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'NUMERO'</span><span class="s1">]))</span>
+        <span class="s3">return </span><span class="s1">DIGITA_COMPLEMENTO</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números. Qual o número da residência?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">DIGITA_NUMERO</span>
+
+<span class="s3">def </span><span class="s1">armazena_complemento(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'COMPLEMENTO'</span><span class="s1">] = update.message.text</span>
+    <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'VALID_END'</span><span class="s1">] == </span><span class="s5">1</span><span class="s1">:</span>
+        <span class="s3">return </span><span class="s1">valid_cadastro(update</span><span class="s3">, </span><span class="s1">context)</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;COMPLEMENTO - {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                  <span class="s4">&quot;Ótimo.E qual seu gênero?&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                  <span class="s4">&quot;Por favor, responda 'HOMEM', 'MULHER' ou 'OUTRO'.&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'COMPLEMENTO'</span><span class="s1">]))</span>
+        <span class="s3">return </span><span class="s1">CAD_GENERO</span>
+
+<span class="s3">def </span><span class="s1">armazena_genero(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">lista = [</span><span class="s4">'HOMEM'</span><span class="s3">,</span><span class="s4">'MULHER'</span><span class="s3">,</span><span class="s4">'OUTRO'</span><span class="s1">]</span>
+    <span class="s3">if </span><span class="s1">update.message.text.upper() </span><span class="s3">in </span><span class="s1">lista:</span>
+        <span class="s1">user_data[</span><span class="s4">'GENERO'</span><span class="s1">] = update.message.text.upper()</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;GENERO - {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;Só mais duas informações&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                  <span class="s4">&quot;Qual sua data de nascimento?&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                  <span class="s4">&quot;Digite no formato DD/MM/AAAA (dia,mes,ano).&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'GENERO'</span><span class="s1">]))</span>
+        <span class="s3">return </span><span class="s1">CAD_IDADE</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Não entendi, por favor, responda 'HOMEM', 'MULHER' ou 'OUTRO'&quot;</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">CAD_GENERO</span>
+
+
+<span class="s3">def </span><span class="s1">armazena_idade(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'DTNASC'</span><span class="s1">] = datetime.datetime.strptime(update.message.text</span><span class="s3">, </span><span class="s4">'%d/%m/%Y'</span><span class="s1">)</span>
+        <span class="s1">idade = int(((datetime.datetime.today()-user_data[</span><span class="s4">'DTNASC'</span><span class="s1">]).days/</span><span class="s5">365.25</span><span class="s1">))</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;Você tem {} anos.&quot;'</span><span class="s3">\n</span><span class="s4">' &quot;E por último, qual é seu telefone com DDD?&quot; '</span><span class="s3">\n</span><span class="s4">'</span>
+                                  <span class="s4">&quot;Digite apenas números sem espaço&quot;</span><span class="s1">.format(idade))</span>
+        <span class="s3">return </span><span class="s1">CAD_TEL</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite no formato DD/MM/AAAA (dia,mes,ano)'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">CAD_IDADE</span>
+
+
+<span class="s3">def </span><span class="s1">armazena_tel(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">print(update.message.text)</span>
+        <span class="s1">user_data[</span><span class="s4">'TELEFONE'</span><span class="s1">] = update.message.text</span>
+        <span class="s1">user_data[</span><span class="s4">'NICKNAME'</span><span class="s1">] = str(update.message.from_user[</span><span class="s4">'first_name'</span><span class="s1">])</span>
+        <span class="s1">user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">] = str(update.message.from_user[</span><span class="s4">'id'</span><span class="s1">])</span>
+        <span class="s1">user_data[</span><span class="s4">'DTNASC'</span><span class="s1">] = str(user_data[</span><span class="s4">'DTNASC'</span><span class="s1">])[</span><span class="s5">0</span><span class="s1">:</span><span class="s5">10</span><span class="s1">]</span>
+        <span class="s1">select = </span><span class="s4">&quot;insert into cadastro (telegramid, nome, cpf, dtnasc, genero, cep, rua, &quot; </span><span class="s1">\</span>
+                 <span class="s4">&quot;numero, complemento, telefone) values (&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])+</span><span class="s4">&quot;,'&quot;</span><span class="s1">+\</span>
+                 <span class="s1">str(user_data[</span><span class="s4">'NOME'</span><span class="s1">])+</span><span class="s4">&quot;','&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'CPF'</span><span class="s1">])+</span><span class="s4">&quot;','&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'DTNASC'</span><span class="s1">])+\</span>
+                 <span class="s4">&quot;','&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'GENERO'</span><span class="s1">])+</span><span class="s4">&quot;','&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'CEP'</span><span class="s1">])+</span><span class="s4">&quot;','&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'RUA'</span><span class="s1">])+\</span>
+                 <span class="s4">&quot;','&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'NUMERO'</span><span class="s1">])+</span><span class="s4">&quot;','&quot;</span><span class="s1">+str(user_data[</span><span class="s4">'COMPLEMENTO'</span><span class="s1">])+</span><span class="s4">&quot;','&quot;</span><span class="s1">+\</span>
+                 <span class="s1">str(user_data[</span><span class="s4">'TELEFONE'</span><span class="s1">])+</span><span class="s4">&quot;')&quot;</span>
+
+        <span class="s1">print(select)</span>
+        <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;TELEFONE - {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                  <span class="s4">&quot;Certo, muito obrigado pelas informações.&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                                  <span class="s4">&quot;Vamos a parte boa agora 😋&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'TELEFONE'</span><span class="s1">]))</span>
+        <span class="s3">return </span><span class="s1">saudacao(update</span><span class="s3">, </span><span class="s1">context)</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números. Qual seu telefone?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">CAD_TEL</span>
+
+
+<span class="s3">def </span><span class="s1">saudacao(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+
+    <span class="s1">deleta_historico = </span><span class="s4">&quot;delete from carrinho where TELEGRAMID =&quot;</span><span class="s1">+ user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]</span>
+    <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">deleta_historico</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+    <span class="s1">select = </span><span class="s4">&quot;select dtnasc, genero, cep, rua, numero, complemento from cadastro where TELEGRAMID =&quot;</span><span class="s1">+\</span>
+             <span class="s1">user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]</span>
+
+    <span class="s1">info_cadastro = list(str(select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password))[</span><span class="s5">2</span><span class="s1">:-</span><span class="s5">2</span><span class="s1">].replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">).split(</span><span class="s4">', '</span><span class="s1">))</span>
+    <span class="s1">user_data[</span><span class="s4">'DTNASC'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'GENERO'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'CEP'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'RUA'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'NUMERO'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">\</span>
+    <span class="s1">user_data[</span><span class="s4">'COMPLEMENTO'</span><span class="s1">] = info_cadastro[</span><span class="s5">0</span><span class="s1">:</span><span class="s5">6</span><span class="s1">]</span>
+
+    <span class="s1">user_data[</span><span class="s4">'IDADE'</span><span class="s1">] = int(((datetime.datetime.today() -</span>
+                               <span class="s1">datetime.datetime.strptime(user_data[</span><span class="s4">'DTNASC'</span><span class="s1">]</span><span class="s3">,</span><span class="s4">'%Y-%m-%d'</span><span class="s1">)).days / </span><span class="s5">365.25</span><span class="s1">))</span>
+
+    <span class="s1">user_data[</span><span class="s4">'HORA'</span><span class="s1">] = datetime.datetime.now().hour</span>
+
+    <span class="s1">user_data[</span><span class="s4">'DATA_ATENDIMENTO'</span><span class="s1">] = datetime.datetime.now().strftime(</span><span class="s4">&quot;%Y-%m-%d&quot;</span><span class="s1">)</span>
+
+    <span class="s1">user_data[</span><span class="s4">'HORA_ATENDIMENTO'</span><span class="s1">] = datetime.datetime.now().strftime(</span><span class="s4">&quot;%H:%M:%S&quot;</span><span class="s1">)</span>
+
+    <span class="s3">if </span><span class="s1">datetime.datetime.now().minute &lt;=</span><span class="s5">30</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MIN_ATE_30'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'MIN_MAIS_30'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MIN_ATE_30'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'MIN_MAIS_30'</span><span class="s1">] = </span><span class="s5">1</span>
+
+    <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'GENERO'</span><span class="s1">] == </span><span class="s4">'HOMEM'</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'HOMEM'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'MULHER'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'OUTRO'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">elif </span><span class="s1">user_data[</span><span class="s4">'GENERO'</span><span class="s1">] == </span><span class="s4">'MULHER'</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'HOMEM'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'MULHER'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'OUTRO'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'HOMEM'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'MULHER'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'OUTRO'</span><span class="s1">] = </span><span class="s5">1</span>
+
+    <span class="s3">if </span><span class="s1">int(user_data[</span><span class="s4">'IDADE'</span><span class="s1">]) &gt; </span><span class="s5">70</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MAIS_70'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_23'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_30'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_40'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_50'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_70'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">elif </span><span class="s1">int(user_data[</span><span class="s4">'IDADE'</span><span class="s1">]) &lt; </span><span class="s5">24</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MAIS_70'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_23'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_30'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_40'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_50'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_70'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">elif </span><span class="s1">int(user_data[</span><span class="s4">'IDADE'</span><span class="s1">]) &lt; </span><span class="s5">31</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MAIS_70'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_23'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_30'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_40'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_50'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_70'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">elif </span><span class="s1">int(user_data[</span><span class="s4">'IDADE'</span><span class="s1">]) &lt; </span><span class="s5">41</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MAIS_70'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_23'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_30'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_40'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_50'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_70'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">elif </span><span class="s1">int(user_data[</span><span class="s4">'IDADE'</span><span class="s1">]) &lt; </span><span class="s5">51</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MAIS_70'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_23'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_30'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_40'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_50'</span><span class="s1">] = </span><span class="s5">1</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_70'</span><span class="s1">] = </span><span class="s5">0</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'MAIS_70'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_23'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_30'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_40'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_50'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">user_data[</span><span class="s4">'ATE_70'</span><span class="s1">] = </span><span class="s5">1</span>
+
+    <span class="s1">update.message.reply_text(</span>
+        <span class="s4">&quot;Olá &quot; </span><span class="s1">+ user_data[</span><span class="s4">'NICKNAME'</span><span class="s1">] + </span><span class="s4">&quot;, nós somos da Chatizza! Eu vou ajudar você a fazer seu pedido.&quot; '</span><span class="s3">\n</span><span class="s4">'</span>
+        <span class="s4">&quot;Habilite o campo de botões, clicando ao lado do emoji no campo de mensagem ok?&quot;'</span><span class="s3">\n</span><span class="s4">'</span>
+        <span class="s4">&quot;Por onde começamos?&quot;</span><span class="s3">,</span>
+        <span class="s1">reply_markup=markup)</span>
+    <span class="s3">return </span><span class="s1">PRIM_INTERACAO</span>
+
+<span class="s3">def </span><span class="s1">altera_cadastro(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s2">#user_data = context.user_data</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'O seu cadastro atual é:'</span><span class="s1">)</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'O que deseja alterar?'</span><span class="s3">, </span><span class="s1">reply_markup=markup_cadastro)</span>
+    <span class="s3">return </span><span class="s1">ALTERAR_CAD</span>
+
+<span class="s3">def </span><span class="s1">guarda_alteracao(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">print(user_data)</span>
+    <span class="s2">#select = &quot;insert into cadastro (telegramid, nome, cpf, dtnasc, genero, cep, rua, numero, &quot; \</span>
+    <span class="s2">#         &quot;complemento, telefone) values (&quot; + str(</span>
+    <span class="s2">#    user_data['ID_TELEGRAM']) + &quot;,'&quot; + str(user_data['NOME']) + &quot;','&quot; + str(user_data['CPF']) + &quot;','&quot; + str(</span>
+    <span class="s2">#   user_data['DTNASC']) + &quot;','&quot; + str(user_data['GENERO']) + &quot;','&quot; + str(user_data['CEP']) + &quot;','&quot; + str(</span>
+    <span class="s2"># user_data['RUA']) + &quot;','&quot; + str(user_data['NUMERO']) + &quot;','&quot; + str(user_data['COMPLEMENTO']) + &quot;','&quot; + str(</span>
+    <span class="s2"># user_data['TELEFONE']) + &quot;')&quot;</span>
+
+<span class="s2"># DEF for informations</span>
+<span class="s3">def </span><span class="s1">infos_choice(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'- Nosso horário de atendimento é das 18:00 às 00:00. ''</span><span class="s3">\n</span><span class="s4">'</span>
+                              <span class="s4">'- Nossas entregas funcionam até as 22:00.''</span><span class="s3">\n</span><span class="s4">'</span>
+                              <span class="s4">'</span><span class="s3">\n</span><span class="s4">'</span>
+                              <span class="s4">'Podemos ajudá-lo em algo mais?''</span><span class="s3">\n</span><span class="s4">'</span>
+                              <span class="s4">'Caso não precise de mais nada, basta clicar em &quot;FINALIZAR&quot;'</span><span class="s3">,</span>
+                              <span class="s1">reply_markup=markup)</span>
+    <span class="s3">return </span><span class="s1">PRIM_INTERACAO</span>
+
+
+<span class="s2"># DEFs for calculator</span>
+<span class="s3">def </span><span class="s1">dimensionamento_choice(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Certo, vamos te ajudar a calcular quantas pizzas você precisará! 😃''</span><span class="s3">\n</span><span class="s4">'</span>
+                              <span class="s4">'São quantos homens?'</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">PRIM_ITERACAO_DIGITE</span>
+
+
+<span class="s3">def </span><span class="s1">dimensionamento_homem(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(update.message.text)</span>
+        <span class="s1">user_data[</span><span class="s4">'HOMEM'</span><span class="s1">] = update.message.text</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;{} Homens&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;Certo, e quantas mulheres? &quot;</span><span class="s1">.format(user_data[</span><span class="s4">'HOMEM'</span><span class="s1">]))</span>
+        <span class="s3">return </span><span class="s1">PRIM_ITERACAO_DIGITE2</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números (por exemplo 6). Quantos homens irão?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">PRIM_ITERACAO_DIGITE</span>
+
+
+<span class="s3">def </span><span class="s1">dimensionamento_mulher(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(update.message.text)</span>
+        <span class="s1">user_data[</span><span class="s4">'MULHER'</span><span class="s1">] = update.message.text</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;{} Mulheres&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; &quot;Okay, e quantas crianças? &quot;</span><span class="s1">.format(user_data[</span><span class="s4">'MULHER'</span><span class="s1">]))</span>
+        <span class="s3">return </span><span class="s1">PRIM_ITERACAO_DIGITE3</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números (por exemplo 4). Quantas mulheres?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">PRIM_ITERACAO_DIGITE2</span>
+
+
+<span class="s3">def </span><span class="s1">dimensionamento_crianca(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(update.message.text)</span>
+        <span class="s1">user_data[</span><span class="s4">'CRIANCA'</span><span class="s1">] = update.message.text</span>
+        <span class="s1">update.message.reply_text(</span>
+            <span class="s4">&quot;Então pelo que me disse são: &quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;HOMEM: {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;MULHER: {}&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+            <span class="s4">&quot;CRIANÇA: {}&quot;</span><span class="s1">.format(user_data[</span><span class="s4">'HOMEM'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">user_data[</span><span class="s4">'MULHER'</span><span class="s1">]</span><span class="s3">,</span><span class="s1">user_data[</span><span class="s4">'CRIANCA'</span><span class="s1">]))</span>
+
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Olha, pelas minhas contas, você precisará de no mínimo {} pizzas'</span><span class="s1">.format(math.ceil(</span>
+            <span class="s1">(int(user_data[</span><span class="s4">'HOMEM'</span><span class="s1">]) * </span><span class="s5">4 </span><span class="s1">+ int(user_data[</span><span class="s4">'MULHER'</span><span class="s1">]) * </span><span class="s5">3 </span><span class="s1">+ int(user_data[</span><span class="s4">'CRIANCA'</span><span class="s1">]) * </span><span class="s5">2</span><span class="s1">) / </span><span class="s5">8</span><span class="s1">))</span><span class="s3">,</span>
+            <span class="s1">reply_markup=markup)</span>
+        <span class="s3">return </span><span class="s1">PRIM_INTERACAO</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números (por exemplo 3). E quantas crianças?'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">PRIM_ITERACAO_DIGITE3</span>
+
+<span class="s2"># DEFs for menu</span>
+<span class="s3">def </span><span class="s1">cardapio_choice(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Muito bom, O que você deseja ver?'</span><span class="s3">, </span><span class="s1">reply_markup=markup_card)</span>
+    <span class="s3">return </span><span class="s1">CARDAPIO_OPCOES</span>
+
+
+<span class="s3">def </span><span class="s1">tamanhos(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Legal, você quer uma pizza de qual tamanho?'</span><span class="s3">, </span><span class="s1">reply_markup=tamanho_markup)</span>
+    <span class="s3">return </span><span class="s1">TAMANHO</span>
+
+
+<span class="s3">def </span><span class="s1">sabores(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">if </span><span class="s1">update.message.text == </span><span class="s4">'GRANDE - 8 PEDAÇOS'</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">] = </span><span class="s4">'GRANDE'</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">] = </span><span class="s4">'BROTO'</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Quantos sabores?'</span><span class="s3">, </span><span class="s1">reply_markup=sabores_markup)</span>
+    <span class="s3">return </span><span class="s1">NUM_SABORES</span>
+
+
+<span class="s3">def </span><span class="s1">opcoes_pizzas(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] = </span><span class="s4">'PIZZAS'</span>
+    <span class="s1">select = </span><span class="s4">&quot;select id_produto, nome, valor_real from &quot;</span><span class="s1">+user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">]</span>
+    <span class="s1">cardapio = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+    <span class="s1">update.message.reply_text(</span>
+        <span class="s4">'Escolha uma de nossas opções abaixo e digite o código da pizza desejada.' '</span><span class="s3">\n</span><span class="s4">'</span>
+        <span class="s4">'Posso te dar uma sugestão de pizza?' '</span><span class="s3">\n</span><span class="s4">' </span><span class="s1">+</span>
+        <span class="s4">'Que tal uma de {} ?'</span><span class="s1">.format(str(preditor_pizza.predict([[user_data[</span><span class="s4">'CEP'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'HORA'</span><span class="s1">]</span><span class="s3">,</span>
+                                                                  <span class="s1">user_data[</span><span class="s4">'HOMEM'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'MULHER'</span><span class="s1">]</span><span class="s3">,</span>
+                                                                  <span class="s1">user_data[</span><span class="s4">'OUTRO'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'MAIS_70'</span><span class="s1">]</span><span class="s3">,</span>
+                                                                  <span class="s1">user_data[</span><span class="s4">'ATE_23'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'ATE_30'</span><span class="s1">]</span><span class="s3">,</span>
+                                                                  <span class="s1">user_data[</span><span class="s4">'ATE_40'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'ATE_50'</span><span class="s1">]</span><span class="s3">,</span>
+                                                                  <span class="s1">user_data[</span><span class="s4">'ATE_70'</span><span class="s1">]</span><span class="s3">, </span><span class="s1">user_data[</span><span class="s4">'MIN_MAIS_30'</span><span class="s1">]</span><span class="s3">,</span>
+                                                                  <span class="s1">user_data[</span><span class="s4">'MIN_ATE_30'</span><span class="s1">]]])[</span><span class="s5">0</span><span class="s1">])) + </span><span class="s4">'</span><span class="s3">\n</span><span class="s4">'</span>
+        <span class="s4">'CÓDIGO - SABOR - PREÇO: ' '</span><span class="s3">\n</span><span class="s4">'</span><span class="s1">)</span>
+
+    <span class="s3">for </span><span class="s1">row </span><span class="s3">in </span><span class="s1">cardapio:</span>
+        <span class="s1">update.message.reply_text(str(row)[</span><span class="s5">1</span><span class="s1">:-</span><span class="s5">1</span><span class="s1">].upper().replace(</span><span class="s4">', '</span><span class="s3">,</span><span class="s4">' - '</span><span class="s1">).replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+    <span class="s3">if </span><span class="s1">update.message.text == </span><span class="s4">'2 SABORES'</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'TIPO2'</span><span class="s1">] = </span><span class="s4">'MEIA'</span>
+        <span class="s1">user_data[</span><span class="s4">'PARTE'</span><span class="s1">] = </span><span class="s4">'1'</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'TIPO2'</span><span class="s1">] = </span><span class="s4">'INTEIRA'</span>
+        <span class="s1">user_data[</span><span class="s4">'PARTE'</span><span class="s1">] = </span><span class="s4">'2'</span>
+        <span class="s3">return </span><span class="s1">QTD_PEDIDO</span>
+
+    <span class="s3">return </span><span class="s1">ADD_ITEM</span>
+
+<span class="s3">def </span><span class="s1">quantidades(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'PEDIDO'</span><span class="s1">] = update.message.text</span>
+    <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] == </span><span class="s4">'PIZZAS'</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Certo, quantas deste sabor? Digite apenas números&quot;</span><span class="s1">)</span>
+    <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] == </span><span class="s4">'DOCES'</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Certo, quantas deste sabor? Digite apenas números&quot;</span><span class="s1">)</span>
+    <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] == </span><span class="s4">'BEBIDAS'</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Certo, quantas unidades? Digite apenas números&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">ADD_ITEM</span>
+
+
+<span class="s3">def </span><span class="s1">add_item(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(update.message.text)</span>
+        <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] == </span><span class="s4">'DOCES' </span><span class="s3">or </span><span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] == </span><span class="s4">'BEBIDAS' </span><span class="s1">:</span>
+            <span class="s1">insert = </span><span class="s4">&quot;insert into carrinho(TELEGRAMID, id_produto, quantidade, tipo, tipo2, &quot; </span><span class="s1">\</span>
+                     <span class="s4">&quot;tamanho, nome, valor_real) select &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) + </span><span class="s4">&quot;, id_produto, &quot;</span><span class="s1">\</span>
+                     <span class="s1">+ update.message.text +</span><span class="s4">&quot;, tipo, '&quot; </span><span class="s1">\</span>
+                     <span class="s1">+ str(user_data[</span><span class="s4">'TIPO2'</span><span class="s1">]) + </span><span class="s4">&quot;','&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">]) + </span><span class="s4">&quot;', nome, valor_real from &quot; </span><span class="s1">\</span>
+                     <span class="s1">+ user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] + </span><span class="s4">&quot; where id_produto =&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'PEDIDO'</span><span class="s1">])</span>
+
+            <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">insert</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Certo, pedido adicionado. Deseja mais alguma coisa?&quot;</span><span class="s3">, </span><span class="s1">reply_markup=markup_adic)</span>
+            <span class="s3">return </span><span class="s1">ADICIONAR</span>
+
+        <span class="s3">elif </span><span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] == </span><span class="s4">'PIZZAS'</span><span class="s1">:</span>
+            <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'TIPO2'</span><span class="s1">] == </span><span class="s4">'MEIA' </span><span class="s3">and </span><span class="s1">user_data[</span><span class="s4">'PARTE'</span><span class="s1">] == </span><span class="s4">'1'</span><span class="s1">:</span>
+                <span class="s1">insert = </span><span class="s4">&quot;insert into carrinho(TELEGRAMID, id_produto, quantidade, tipo, tipo2, tamanho, nome, &quot; </span><span class="s1">\</span>
+                         <span class="s4">&quot;valor_real) select &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) + </span><span class="s4">&quot;, id_produto, 0.5, tipo, '&quot; </span><span class="s1">\</span>
+                         <span class="s1">+ str(user_data[</span><span class="s4">'TIPO2'</span><span class="s1">]) + </span><span class="s4">&quot;','&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">]) + \</span>
+                         <span class="s4">&quot;', nome, valor_real from &quot; </span><span class="s1">+ user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] + </span><span class="s4">&quot; where id_produto =&quot; </span><span class="s1">\</span>
+                         <span class="s1">+ update.message.text</span>
+
+                <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">insert</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+                <span class="s1">user_data[</span><span class="s4">'PARTE'</span><span class="s1">] = </span><span class="s4">'2'</span>
+                <span class="s1">select = </span><span class="s4">&quot;select nome from &quot;</span><span class="s1">+user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">]+</span><span class="s4">&quot; where id_produto =&quot; </span><span class="s1">+ update.message.text</span>
+                <span class="s1">pedido = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+                <span class="s1">select = </span><span class="s4">&quot;select id_produto, nome, valor_real from &quot;</span><span class="s1">+user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">]</span>
+                <span class="s1">cardapio = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+                <span class="s1">update.message.reply_text(</span><span class="s4">'Certo, meia pizza de {}, Qual o sabor da outra metade?' '</span><span class="s3">\n</span><span class="s4">'</span>
+                                          <span class="s4">'CÓDIGO, SABOR, PREÇO: ' '</span><span class="s3">\n</span><span class="s4">'</span><span class="s1">.format(str(pedido)[</span><span class="s5">3</span><span class="s1">:-</span><span class="s5">4</span><span class="s1">].upper()))</span>
+                <span class="s3">for </span><span class="s1">row </span><span class="s3">in </span><span class="s1">cardapio:</span>
+                    <span class="s1">update.message.reply_text(str(row)[</span><span class="s5">1</span><span class="s1">:-</span><span class="s5">1</span><span class="s1">].upper().replace(</span><span class="s4">', '</span><span class="s3">, </span><span class="s4">' - '</span><span class="s1">).replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+                <span class="s3">return </span><span class="s1">ADD_ITEM</span>
+
+            <span class="s3">else</span><span class="s1">:</span>
+                <span class="s3">if </span><span class="s1">user_data[</span><span class="s4">'TIPO2'</span><span class="s1">] == </span><span class="s4">'MEIA'</span><span class="s1">:</span>
+                    <span class="s1">insert = </span><span class="s4">&quot;insert into carrinho(TELEGRAMID, id_produto, quantidade, tipo, tipo2, &quot; </span><span class="s1">\</span>
+                             <span class="s4">&quot;tamanho, nome, valor_real) select &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) \</span>
+                             <span class="s1">+ </span><span class="s4">&quot;, id_produto, 0.5, tipo, '&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'TIPO2'</span><span class="s1">]) + </span><span class="s4">&quot;','&quot; </span><span class="s1">\</span>
+                             <span class="s1">+ str(user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">]) + </span><span class="s4">&quot;', nome, valor_real from &quot; </span><span class="s1">\</span>
+                             <span class="s1">+ user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] + </span><span class="s4">&quot; where id_produto =&quot; </span><span class="s1">+ update.message.text</span>
+
+                    <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">insert</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+                <span class="s3">else</span><span class="s1">:</span>
+                    <span class="s1">insert = </span><span class="s4">&quot;insert into carrinho(TELEGRAMID, id_produto, quantidade, tipo, tipo2, tamanho, &quot; </span><span class="s1">\</span>
+                             <span class="s4">&quot;nome, valor_real) select &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) + </span><span class="s4">&quot;, id_produto, &quot;</span><span class="s1">\</span>
+                             <span class="s1">+ update.message.text+</span><span class="s4">&quot;, tipo, '&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'TIPO2'</span><span class="s1">]) + </span><span class="s4">&quot;','&quot; </span><span class="s1">\</span>
+                             <span class="s1">+ str(user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">]) + </span><span class="s4">&quot;', nome, valor_real from &quot; </span><span class="s1">\</span>
+                             <span class="s1">+ user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] + </span><span class="s4">&quot; where id_produto =&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'PEDIDO'</span><span class="s1">])</span>
+
+                    <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">insert</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+                <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Prontinho, anotado&quot;</span><span class="s3">, </span><span class="s1">reply_markup=markup_adic)</span>
+                <span class="s3">return </span><span class="s1">ADICIONAR</span>
+
+        <span class="s3">else</span><span class="s1">:</span>
+             <span class="s1">insert = </span><span class="s4">&quot;DELETE FROM carrinho WHERE item_pedido IN &quot; </span><span class="s1">\</span>
+             <span class="s4">&quot;(SELECT item_pedido FROM ( SELECT item_pedido, RANK() OVER(PARTITION BY telegramid &quot; </span><span class="s1">\</span>
+                      <span class="s4">&quot;ORDER BY item_pedido) AS pedido &quot;</span><span class="s1">\</span>
+             <span class="s4">&quot;FROM carrinho ) AS RKG WHERE RKG.pedido = &quot; </span><span class="s1">+ update.message.text + </span><span class="s4">&quot; AND telegramid = &quot; </span><span class="s1">\</span>
+                      <span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) + </span><span class="s4">&quot;) AND telegramid = &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span>
+
+             <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">insert</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+             <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Pronto, item removido dos pedidos. Deseja mais alguma coisa?&quot;</span><span class="s3">,</span>
+                                       <span class="s1">reply_markup=markup_adic)</span>
+             <span class="s3">return </span><span class="s1">ADICIONAR</span>
+
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números (por exemplo: 1)'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">ADD_ITEM</span>
+
+
+<span class="s3">def </span><span class="s1">remove_item(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] = </span><span class="s4">'REMOVER'</span>
+
+    <span class="s1">select = </span><span class="s4">&quot;SELECT RANK() OVER( PARTITION BY telegramid ORDER BY item_pedido ) as codigo , &quot; </span><span class="s1">\</span>
+             <span class="s4">&quot;nome, quantidade, valor_real*quantidade as valor FROM carrinho where telegramid = &quot;</span><span class="s1">\</span>
+             <span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span>
+
+    <span class="s1">cardapio = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+    <span class="s1">update.message.reply_text(</span>
+        <span class="s4">'Certo, qual dos itens abaixo você gostaria de remover? ' '</span><span class="s3">\n</span><span class="s4">'</span>
+        <span class="s4">'Digite apenas o código.' '</span><span class="s3">\n</span><span class="s4">' 'CÓDIGO - NOME - QUANTIA - PREÇO: ' '</span><span class="s3">\n</span><span class="s4">'</span><span class="s1">)</span>
+    
+    <span class="s3">for </span><span class="s1">row </span><span class="s3">in </span><span class="s1">cardapio:</span>
+        <span class="s1">update.message.reply_text(str(row)[</span><span class="s5">1</span><span class="s1">:-</span><span class="s5">1</span><span class="s1">].upper().replace(</span><span class="s4">', '</span><span class="s3">, </span><span class="s4">' - '</span><span class="s1">).replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+    <span class="s3">return </span><span class="s1">ADD_ITEM</span>
+
+
+<span class="s3">def </span><span class="s1">opcoes_doces(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] = </span><span class="s4">'DOCES'</span>
+    <span class="s1">user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">] = </span><span class="s4">'UNICO'</span>
+    <span class="s1">user_data[</span><span class="s4">'TIPO2'</span><span class="s1">] = </span><span class="s4">'UNICO'</span>
+    <span class="s1">select = </span><span class="s4">&quot;select id_produto, nome, valor_real from &quot;</span><span class="s1">+ user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">]</span>
+    <span class="s1">cardapio = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+    <span class="s1">update.message.reply_text(</span>
+        <span class="s4">'Escolha uma de nossas opções abaixo e digite o código da pizza desejada.' '</span><span class="s3">\n</span><span class="s4">'</span>
+        <span class="s4">'CÓDIGO - SABOR - PREÇO: ' '</span><span class="s3">\n</span><span class="s4">'</span><span class="s1">)</span>
+
+    <span class="s3">for </span><span class="s1">row </span><span class="s3">in </span><span class="s1">cardapio:</span>
+        <span class="s1">update.message.reply_text(str(row)[</span><span class="s5">1</span><span class="s1">:-</span><span class="s5">1</span><span class="s1">].upper().replace(</span><span class="s4">', '</span><span class="s3">, </span><span class="s4">' - '</span><span class="s1">).replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+    <span class="s3">return </span><span class="s1">QTD_PEDIDO</span>
+
+
+<span class="s3">def </span><span class="s1">opcoes_bebidas(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">] = </span><span class="s4">'BEBIDAS'</span>
+    <span class="s1">user_data[</span><span class="s4">'TAMANHO'</span><span class="s1">] = </span><span class="s4">'UNICO'</span>
+    <span class="s1">user_data[</span><span class="s4">'TIPO2'</span><span class="s1">] = </span><span class="s4">'UNICO'</span>
+    <span class="s1">select = </span><span class="s4">&quot;select id_produto, nome, valor_real from &quot; </span><span class="s1">+ user_data[</span><span class="s4">'CARDAPIO'</span><span class="s1">]</span>
+    <span class="s1">cardapio = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Nada melhor que uma bebida pra acompanhar a pizza né? ' '</span><span class="s3">\n</span><span class="s4">'</span>
+                              <span class="s4">'😍, Qual bebida você quer colocar no pedido? Pode só me dizer o número do item:.' '</span><span class="s3">\n</span><span class="s4">'</span>
+                              <span class="s4">'CÓDIGO - BEBIDA - PREÇO: ' '</span><span class="s3">\n</span><span class="s4">'</span><span class="s1">)</span>
+
+    <span class="s3">for </span><span class="s1">row </span><span class="s3">in </span><span class="s1">cardapio:</span>
+        <span class="s1">update.message.reply_text(str(row)[</span><span class="s5">1</span><span class="s1">:-</span><span class="s5">1</span><span class="s1">].upper().replace(</span><span class="s4">', '</span><span class="s3">, </span><span class="s4">' - '</span><span class="s1">).replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+    <span class="s3">return </span><span class="s1">QTD_PEDIDO</span>
+
+
+<span class="s3">def </span><span class="s1">fim_pedido(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">select = </span><span class="s4">&quot;select  quantidade, nome, valor_real, valor_real*quantidade as total from &quot; </span><span class="s1">\</span>
+             <span class="s4">&quot;carrinho where telegramid = &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span>
+
+    <span class="s1">cardapio = select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+    <span class="s1">select = </span><span class="s4">&quot;select sum(valor_real*quantidade) as valortotal from carrinho where telegramid = &quot; </span><span class="s1">\</span>
+             <span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span>
+
+    <span class="s1">user_data[</span><span class="s4">'VALOR_TOTAL'</span><span class="s1">] = str(select_bdados(database</span><span class="s3">, </span><span class="s1">select</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password))[</span><span class="s5">3</span><span class="s1">:-</span><span class="s5">4</span><span class="s1">]</span><span class="s2">#.replace('\'', '')</span>
+
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Abaixo segue lista de pedidos' '</span><span class="s3">\n</span><span class="s4">' 'QUANTIA - NOME - VALOR UNIDADE - SUB TOTAL: ' '</span><span class="s3">\n</span><span class="s4">'</span><span class="s1">)</span>
+
+    <span class="s3">for </span><span class="s1">row </span><span class="s3">in </span><span class="s1">cardapio:</span>
+        <span class="s1">update.message.reply_text(str(row)[</span><span class="s5">1</span><span class="s1">:-</span><span class="s5">1</span><span class="s1">].upper().replace(</span><span class="s4">', '</span><span class="s3">, </span><span class="s4">' - '</span><span class="s1">).replace(</span><span class="s4">'</span><span class="s3">\'</span><span class="s4">'</span><span class="s3">, </span><span class="s4">''</span><span class="s1">))</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Seus pedidos estão totalizando {}. Confirmar a compra?'</span><span class="s1">.format(user_data[</span><span class="s4">'VALOR_TOTAL'</span><span class="s1">])</span><span class="s3">,</span>
+                              <span class="s1">reply_markup=markup_confir)</span>
+    <span class="s3">return </span><span class="s1">FINALIZAR_COMPRA</span>
+
+<span class="s3">def </span><span class="s1">observacao(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Gostaria de fazer alguma observacao para o pedido?&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot; </span>
+                              <span class="s4">&quot;Retirar algum ingrediente ou mudar o corte da pizza, estou anotando 😉&quot; </span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">OBSERVACAO</span>
+
+<span class="s3">def </span><span class="s1">salva_obs(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'OBSERVACAO'</span><span class="s1">] = update.message.text</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Beleza... Seu pedido já está me deixando com fome também 😅&quot; &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">valid_cadastro(update</span><span class="s3">, </span><span class="s1">context)</span>
+
+<span class="s3">def </span><span class="s1">valid_cadastro(update</span><span class="s3">,</span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'VALID_END'</span><span class="s1">] = </span><span class="s5">1</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Vamos fazer uma confirmação de endereço, tudo bem?'&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                              <span class="s4">'O endereço para entrega está correto?'&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                              <span class="s4">'RUA: {}'&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                              <span class="s4">'NUMERO: {}'&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                              <span class="s4">'COMPLEMENTO: {}'</span><span class="s1">.format(user_data[</span><span class="s4">'RUA'</span><span class="s1">]</span><span class="s3">,</span>
+                                                       <span class="s1">user_data[</span><span class="s4">'NUMERO'</span><span class="s1">]</span><span class="s3">,</span>
+                                                       <span class="s1">user_data[</span><span class="s4">'COMPLEMENTO'</span><span class="s1">])</span><span class="s3">, </span><span class="s1">reply_markup=markup_confirm)</span>
+    <span class="s3">return </span><span class="s1">CONFIRMACAO</span>
+
+<span class="s3">def </span><span class="s1">pgto_obs(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">'Qual a forma de pagamento?'</span><span class="s3">, </span><span class="s1">reply_markup=markup_pgto)</span>
+    <span class="s3">return </span><span class="s1">FORMAS_PGTO</span>
+
+<span class="s3">def </span><span class="s1">forma_pagto(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">forma = update.message.text</span>
+    <span class="s3">if </span><span class="s1">forma == </span><span class="s4">'CRÉDITO' </span><span class="s3">or </span><span class="s1">forma == </span><span class="s4">'DÉBITO'</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'FORMA_PAGTO'</span><span class="s1">] = forma</span>
+        <span class="s1">user_data[</span><span class="s4">'TROCO'</span><span class="s1">] = </span><span class="s5">0</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Certo! A forma de pagamento escolhida foi {}.'&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+            <span class="s4">'Pedido enviado ao Chef 👨‍'</span><span class="s1">.format(forma.lower()))</span>
+        <span class="s3">return </span><span class="s1">avaliacao_atendimento(update</span><span class="s3">, </span><span class="s1">context)</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">user_data[</span><span class="s4">'FORMA_PAGTO'</span><span class="s1">] = forma</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Certo! A forma de pagamento escolhida foi {}.'&quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+            <span class="s4">'Troco para quanto? Digite apenas o valor'</span><span class="s1">.format(forma.lower()))</span>
+        <span class="s3">return </span><span class="s1">TROCO_PARA</span>
+
+
+<span class="s3">def </span><span class="s1">guarda_troco(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">forma = update.message.text</span>
+    <span class="s1">user_data[</span><span class="s4">'TROCO'</span><span class="s1">] = update.message.text</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">int(user_data[</span><span class="s4">'TROCO'</span><span class="s1">])</span>
+        <span class="s3">if </span><span class="s1">int(user_data[</span><span class="s4">'TROCO'</span><span class="s1">]) &gt;= float(user_data[</span><span class="s4">'VALOR_TOTAL'</span><span class="s1">][</span><span class="s5">3</span><span class="s1">:].replace(</span><span class="s4">','</span><span class="s3">, </span><span class="s4">'.'</span><span class="s1">)):</span>
+            <span class="s1">update.message.reply_text(</span>
+            <span class="s4">'Tudo bem. Enviaremos troco para {}.'&quot;</span><span class="s3">\n</span><span class="s4">&quot; 'Pedido enviado ao Chef 👨‍'</span><span class="s1">.format(forma.lower()))</span>
+            <span class="s3">return </span><span class="s1">avaliacao_atendimento(update</span><span class="s3">, </span><span class="s1">context)</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">'O troco informado é menor que o valor da compra, '</span>
+                                      <span class="s4">'por gentileza me informe corretamente :)'</span><span class="s1">)</span>
+            <span class="s3">return </span><span class="s1">TROCO_PARA</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números. (10, 20, 50) :)'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">TROCO_PARA</span>
+
+<span class="s3">def </span><span class="s1">avaliacao_atendimento(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+
+    <span class="s1">user_data[</span><span class="s4">'ID_PEDIDO'</span><span class="s1">] = str(select_bdados(database</span><span class="s3">, </span><span class="s4">&quot;select coalesce(max(id_pedido),0)+1 from pedidos&quot;</span><span class="s3">,</span>
+                                               <span class="s1">username</span><span class="s3">, </span><span class="s1">password))[</span><span class="s5">2</span><span class="s1">:-</span><span class="s5">3</span><span class="s1">]</span>
+    <span class="s1">user_data[</span><span class="s4">'ID_PEDIDO_CLIENTE'</span><span class="s1">] = str(select_bdados(database</span><span class="s3">,</span><span class="s4">&quot;select count(distinct(DATA, HORA))+1 &quot;</span>
+                                                                <span class="s4">&quot;from pedidos where telegramid = &quot;</span>
+                                                       <span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span><span class="s3">,</span><span class="s1">username</span><span class="s3">, </span><span class="s1">password))[</span><span class="s5">2</span><span class="s1">:-</span><span class="s5">3</span><span class="s1">]</span>
+
+    <span class="s1">insert = </span><span class="s4">&quot;insert into pedidos (id_pedido, id_pedido_cliente, data, hora, telegramid, id_produto, tipo, &quot; </span><span class="s1">\</span>
+             <span class="s4">&quot;tipo2, tamanho, nome,quantidade, forma_pagto, observacao, valor_unitario, valor_total, &quot; </span><span class="s1">\</span>
+             <span class="s4">&quot;valor_compra, troco) select &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_PEDIDO'</span><span class="s1">]) + </span><span class="s4">&quot;,&quot; </span><span class="s1">\</span>
+             <span class="s1">+ str(user_data[</span><span class="s4">'ID_PEDIDO_CLIENTE'</span><span class="s1">]) + </span><span class="s4">&quot;, '&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'DATA_ATENDIMENTO'</span><span class="s1">]) \</span>
+             <span class="s1">+ </span><span class="s4">&quot;','&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'HORA_ATENDIMENTO'</span><span class="s1">]) + </span><span class="s4">&quot;',&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) \</span>
+             <span class="s1">+ </span><span class="s4">&quot;, id_produto, tipo, tipo2, tamanho, nome, quantidade, '&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'FORMA_PAGTO'</span><span class="s1">]) \</span>
+             <span class="s1">+ </span><span class="s4">&quot;','&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'OBSERVACAO'</span><span class="s1">]) + </span><span class="s4">&quot;',valor_real, valor_real*quantidade,'&quot; </span><span class="s1">\</span>
+             <span class="s1">+ str(user_data[</span><span class="s4">'VALOR_TOTAL'</span><span class="s1">]) + </span><span class="s4">&quot;', &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'TROCO'</span><span class="s1">]) \</span>
+             <span class="s1">+ </span><span class="s4">&quot; from carrinho where telegramid =&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span>
+
+    <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">insert</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Posso te pedir uma última coisa? Me diz, de 1 a 5, qual a nota do nosso atendimento?&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">FIM_PEDIDO</span>
+
+<span class="s3">def </span><span class="s1">fim(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">logger.info(</span><span class="s4">'alguém notificou nosso atendimento'</span><span class="s1">)</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">nota = int(update.message.text)</span>
+        <span class="s3">if </span><span class="s5">1 </span><span class="s1">&lt;= nota &lt;= </span><span class="s5">5</span><span class="s1">:</span>
+            <span class="s1">user_data[</span><span class="s4">'NOTA_ATENDIMENTO'</span><span class="s1">] = nota</span>
+            <span class="s3">if </span><span class="s1">nota &gt;= </span><span class="s5">4</span><span class="s1">:</span>
+                <span class="s1">update.message.reply_text(</span>
+                    <span class="s4">'Oba, nota {} 😃.' &quot;</span><span class="s3">\n</span><span class="s4">&quot;</span>
+                    <span class="s4">'Poderia me informar como conseguirei melhorar ainda mais meu atendimento?'</span><span class="s1">.format(nota))</span>
+                <span class="s3">return </span><span class="s1">MOTIVO_FIM</span>
+            <span class="s3">else</span><span class="s1">:</span>
+                <span class="s1">update.message.reply_text(</span>
+                    <span class="s4">'Apenas {}? 😓' &quot;</span><span class="s3">\n</span><span class="s4">&quot; </span>
+                    <span class="s4">'Poderia me informar o motivo para que eu melhore meu próximo atendimento?'</span><span class="s1">.format(nota))</span>
+                <span class="s3">return </span><span class="s1">MOTIVO_FIM</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite notas de 1 a 5,por exemplo 5 :D'</span><span class="s1">)</span>
+            <span class="s3">return </span><span class="s1">FIM_PEDIDO</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números, por exemplo 5 :D'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">FIM_PEDIDO</span>
+
+<span class="s3">def </span><span class="s1">set_timer(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">count = </span><span class="s5">0</span>
+    <span class="s3">if </span><span class="s1">count == </span><span class="s5">0</span><span class="s1">:</span>
+        <span class="s1">chat_id = update.message.chat_id</span>
+        <span class="s3">try</span><span class="s1">:</span>
+            <span class="s1">due = int(</span><span class="s5">15</span><span class="s1">)</span>
+            <span class="s3">if </span><span class="s1">due &lt; </span><span class="s5">0</span><span class="s1">:</span>
+                <span class="s1">update.message.reply_text(</span><span class="s4">'Verificar!'</span><span class="s1">)</span>
+                <span class="s3">return</span>
+            <span class="s3">if </span><span class="s4">'job' </span><span class="s3">in </span><span class="s1">context.chat_data:</span>
+                <span class="s1">old_job = context.chat_data[</span><span class="s4">'job'</span><span class="s1">]</span>
+                <span class="s1">old_job.schedule_removal()</span>
+            <span class="s1">new_job = context.job_queue.run_once(alarm</span><span class="s3">, </span><span class="s1">due</span><span class="s3">, </span><span class="s1">context=chat_id)</span>
+            <span class="s1">context.chat_data[</span><span class="s4">'job'</span><span class="s1">] = new_job</span>
+            <span class="s1">count += </span><span class="s5">1</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">'Timer iniciado!'</span><span class="s1">)</span>
+            <span class="s1">count += </span><span class="s5">1</span>
+            <span class="s3">return  </span><span class="s1">NOTA_PIZZA</span>
+        <span class="s3">except </span><span class="s1">(IndexError</span><span class="s3">, </span><span class="s1">ValueError):</span>
+            <span class="s1">count += </span><span class="s5">1</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">'Usage: /set &lt;seconds&gt;'</span><span class="s1">)</span>
+    <span class="s3">else</span><span class="s1">:</span>
+        <span class="s1">count += </span><span class="s5">1</span>
+        <span class="s3">return </span><span class="s1">final_final(update</span><span class="s3">, </span><span class="s1">context)</span>
+
+
+<span class="s3">def </span><span class="s1">alarm(context):</span>
+    <span class="s1">job = context.job</span>
+    <span class="s1">context.bot.send_message(job.context</span><span class="s3">,</span>
+                             <span class="s1">text=</span><span class="s4">&quot;Oi, tudo bem? Depois de comer a pizza, &quot;</span>
+                                  <span class="s4">&quot;qual nota daria para ela? digite um número de 1 a 5&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">NOTA_PIZZA</span>
+
+<span class="s3">def </span><span class="s1">clean_text(text):</span>
+    <span class="s1">text = text.lower() </span><span class="s2"># Leave all lowercase characters</span>
+    <span class="s1">text = normalize(</span><span class="s4">'NFKD'</span><span class="s3">, </span><span class="s1">text).encode(</span><span class="s4">'ASCII'</span><span class="s3">, </span><span class="s4">'ignore'</span><span class="s1">).decode(</span><span class="s4">'ASCII'</span><span class="s1">)</span>
+    <span class="s1">text = [re.sub(</span><span class="s4">r'^https?:\/\/.[\r\n]'</span><span class="s3">, </span><span class="s4">' '</span><span class="s3">, </span><span class="s1">word) </span><span class="s3">for </span><span class="s1">word </span><span class="s3">in </span><span class="s1">text.split(</span><span class="s4">&quot; &quot;</span><span class="s1">)]</span>
+    <span class="s1">text = </span><span class="s4">&quot; &quot;</span><span class="s1">.join(text) </span><span class="s2"># Uniting text again separated by space</span>
+    <span class="s1">text = re.sub(</span><span class="s4">r'&lt;[^&gt;]+&gt;'</span><span class="s3">,</span><span class="s4">' '</span><span class="s3">,</span><span class="s1">text) </span><span class="s2"># hange the '&lt;br /&gt;' section to space</span>
+    <span class="s1">text = re.sub(</span><span class="s4">r'[^a-z]'</span><span class="s3">, </span><span class="s4">' '</span><span class="s3">, </span><span class="s1">text) </span><span class="s2"># Changes scores and numbers to space</span>
+    <span class="s1">text = re.sub(</span><span class="s4">r&quot;\s+[a-z]\s+&quot;</span><span class="s3">, </span><span class="s4">' '</span><span class="s3">, </span><span class="s1">text) </span><span class="s2"># Change single characters to space</span>
+    <span class="s1">text = re.sub(</span><span class="s4">r'([a-z])(?=\1{2,})'</span><span class="s3">, </span><span class="s4">&quot;&quot;</span><span class="s3">, </span><span class="s1">text) </span><span class="s2"># Removes repeated characters over 2 times</span>
+    <span class="s1">text = re.sub(</span><span class="s4">r'[ ]{1,}'</span><span class="s3">,</span><span class="s4">' '</span><span class="s3">,</span><span class="s1">text) </span><span class="s2"># Removes duplicate spaces in the string</span>
+    <span class="s1">text = text.strip() </span><span class="s2"># Remove spaces at the beginning and end of the string</span>
+
+    <span class="s2"># Removes the words found in the stop_sword list</span>
+    <span class="s1">text = [word </span><span class="s3">for </span><span class="s1">word </span><span class="s3">in </span><span class="s1">text.split(</span><span class="s4">&quot; &quot;</span><span class="s1">) </span><span class="s3">if not </span><span class="s1">word </span><span class="s3">in </span><span class="s1">stop_words]</span>
+    <span class="s1">text = </span><span class="s4">&quot; &quot;</span><span class="s1">.join(text) </span><span class="s2"># Join text again separated by space</span>
+    <span class="s3">return </span><span class="s1">text</span>
+
+<span class="s3">def </span><span class="s1">nlp(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'AVALIACAO_ATENDIMENTO'</span><span class="s1">] = update.message.text</span>
+    <span class="s1">user_data[</span><span class="s4">'NLP_ATENDIMENTO'</span><span class="s1">] = str(</span>
+        <span class="s1">preditor_avaliacao.predict(bow.transform([clean_text(user_data[</span><span class="s4">'AVALIACAO_ATENDIMENTO'</span><span class="s1">])])))</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Anotado, avaliaremos junto a equipe sua avaliação&quot;</span><span class="s1">)</span>
+
+    <span class="s1">user_data[</span><span class="s4">'ID_PEDIDO_CLIENTE'</span><span class="s1">] = str(</span>
+        <span class="s1">select_bdados(database</span><span class="s3">,</span><span class="s4">&quot;select count(distinct(DATA, HORA)) from pedidos where telegramid = &quot;</span><span class="s1">+ str(</span>
+            <span class="s1">user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span><span class="s3">,</span><span class="s1">username</span><span class="s3">, </span><span class="s1">password))[</span><span class="s5">2</span><span class="s1">:-</span><span class="s5">3</span><span class="s1">]</span>
+
+    <span class="s1">insert = </span><span class="s4">&quot;insert into avaliacoes(id_pedido, id_pedido_cliente, telegramid, nota_atendimento, avaliacao_&quot; </span><span class="s1">\</span>
+             <span class="s4">&quot;atendimento, nlp_atendimento) &quot; </span><span class="s1">\</span>
+        <span class="s4">&quot;select id_pedido, id_pedido_cliente, telegramid,&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'NOTA_ATENDIMENTO'</span><span class="s1">]) \</span>
+             <span class="s1">+ </span><span class="s4">&quot;, '&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'AVALIACAO_ATENDIMENTO'</span><span class="s1">]) + \</span>
+        <span class="s4">&quot;', '&quot; </span><span class="s1">+str(user_data[</span><span class="s4">'NLP_ATENDIMENTO'</span><span class="s1">][</span><span class="s5">2</span><span class="s1">:-</span><span class="s5">2</span><span class="s1">]) + </span><span class="s4">&quot;' from pedidos where &quot; </span><span class="s1">\</span>
+        <span class="s4">&quot;telegramid = &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) + </span><span class="s4">&quot; and id_pedido_cliente = &quot; </span><span class="s1">\</span>
+             <span class="s1">+ str(user_data[</span><span class="s4">'ID_PEDIDO_CLIENTE'</span><span class="s1">])</span>
+
+    <span class="s1">alteracoes_bdados(database</span><span class="s3">, </span><span class="s1">insert</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+    <span class="s3">return </span><span class="s1">finalizar(update</span><span class="s3">, </span><span class="s1">context)</span>
+
+
+<span class="s3">def </span><span class="s1">nota_pizza(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s3">try</span><span class="s1">:</span>
+        <span class="s1">nota = int(update.message.text)</span>
+        <span class="s3">if </span><span class="s5">1 </span><span class="s1">&lt;= nota &lt;= </span><span class="s5">5</span><span class="s1">:</span>
+            <span class="s1">user_data[</span><span class="s4">'NOTA_PIZZA'</span><span class="s1">] = nota</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Certo, poderia me descrever o motivo desta nota?&quot;</span><span class="s1">.format(nota))</span>
+            <span class="s3">return </span><span class="s1">TESTE</span>
+        <span class="s3">else</span><span class="s1">:</span>
+            <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite notas de 1 a 5,por exemplo 5 :D'</span><span class="s1">)</span>
+            <span class="s3">return </span><span class="s1">NOTA_PIZZA</span>
+    <span class="s3">except</span><span class="s1">:</span>
+        <span class="s1">update.message.reply_text(</span><span class="s4">'Não entendi, digite apenas números, por exemplo 5 :D'</span><span class="s1">)</span>
+        <span class="s3">return </span><span class="s1">NOTA_PIZZA</span>
+
+<span class="s3">def </span><span class="s1">nlp2(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">user_data = context.user_data</span>
+    <span class="s1">user_data[</span><span class="s4">'AVALIACAO_PIZZA'</span><span class="s1">] = update.message.text</span>
+    <span class="s1">user_data[</span><span class="s4">'NLP_PIZZA'</span><span class="s1">] = str(preditor_avaliacao.predict(bow.transform([user_data[</span><span class="s4">'AVALIACAO_PIZZA'</span><span class="s1">]])))</span>
+    <span class="s1">user_data[</span><span class="s4">'ID_PEDIDO_CLIENTE'</span><span class="s1">] = str(</span>
+        <span class="s1">select_bdados(database</span><span class="s3">, </span><span class="s4">&quot;select count(distinct(DATA, HORA)) from pedidos where telegramid = &quot;</span>
+                      <span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">])</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password))[</span><span class="s5">2</span><span class="s1">:-</span><span class="s5">3</span><span class="s1">]</span>
+
+    <span class="s1">update_tbl = </span><span class="s4">&quot;update avaliacoes set nota_pizza = &quot;</span><span class="s1">+ str(user_data[</span><span class="s4">'NOTA_PIZZA'</span><span class="s1">]) \</span>
+                 <span class="s1">+ </span><span class="s4">&quot;, avaliacao_pizza = '&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'AVALIACAO_PIZZA'</span><span class="s1">]) + \</span>
+        <span class="s4">&quot;', nlp_pizza = '&quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'NLP_PIZZA'</span><span class="s1">][</span><span class="s5">2</span><span class="s1">:-</span><span class="s5">2</span><span class="s1">]) + </span><span class="s4">&quot;' where telegramid = &quot; </span><span class="s1">\</span>
+                 <span class="s1">+ str(user_data[</span><span class="s4">'ID_TELEGRAM'</span><span class="s1">]) + </span><span class="s4">&quot; and id_pedido_cliente = &quot; </span><span class="s1">+ str(user_data[</span><span class="s4">'ID_PEDIDO_CLIENTE'</span><span class="s1">])</span>
+    
+    <span class="s1">update_bdados(database</span><span class="s3">, </span><span class="s1">update_tbl</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;Muito obrigado pelo seu feedback 😃&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">final_final(update</span><span class="s3">, </span><span class="s1">context)</span>
+
+<span class="s3">def </span><span class="s1">finalizar(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">logger.info(</span><span class="s4">'alguém finalizou o atendimento'</span><span class="s1">)</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;A Chatizza agradece seu contato.&quot;'</span><span class="s3">\n</span><span class="s4">' &quot;Até a próxima 🙋&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">set_timer(update</span><span class="s3">, </span><span class="s1">context)</span>
+
+<span class="s3">def </span><span class="s1">final_final(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">update.message.reply_text(</span><span class="s4">&quot;A Chatizza agradece seu contato.&quot;'</span><span class="s3">\n</span><span class="s4">' &quot;Até a próxima 🙋&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">ConversationHandler.END</span>
+
+<span class="s3">def </span><span class="s1">timeout(update</span><span class="s3">, </span><span class="s1">context):</span>
+    <span class="s1">logger.info(</span><span class="s4">'alguém parou de responder nosso atendimento'</span><span class="s1">)</span>
+    <span class="s1">update.effective_message.reply_text(</span><span class="s4">&quot;Bem, vou finalizar nossa conversa por falta de interação ok?&quot; '</span><span class="s3">\n</span><span class="s4">' </span>
+                                        <span class="s4">&quot;Caso queira iniciar um novo atendimento, estamos à disposição.&quot;</span><span class="s1">)</span>
+    <span class="s3">return </span><span class="s1">ConversationHandler.END</span>
+
+<span class="s2"># Bot</span>
+<span class="s3">def </span><span class="s1">main():</span>
+    <span class="s1">print(</span><span class="s4">'Aplicação em execução 🚀'</span><span class="s1">)</span>
+
+    <span class="s1">updater = Updater(token</span><span class="s3">, </span><span class="s1">use_context=</span><span class="s3">True</span><span class="s1">)</span>
+
+    <span class="s2"># Creating the dispatcher to register handlers</span>
+    <span class="s1">dp = updater.dispatcher</span>
+
+    <span class="s1">criando_bdados(database</span><span class="s3">, </span><span class="s1">username</span><span class="s3">, </span><span class="s1">password)</span>
+
+    <span class="s1">start_filter = StartFilter()</span>
+    <span class="s1">end_filter = EndFilter()</span>
+
+    <span class="s2"># Button display</span>
+    <span class="s1">conv_handler = ConversationHandler(</span>
+        <span class="s1">entry_points=[CommandHandler(</span><span class="s4">'start'</span><span class="s3">, </span><span class="s1">start)</span><span class="s3">,</span>
+                      <span class="s1">MessageHandler(Filters.text &amp; start_filter</span><span class="s3">, </span><span class="s1">start)]</span><span class="s3">,</span>
+
+        <span class="s1">states={</span>
+
+            <span class="s2"># Register</span>
+            <span class="s1">CAD_NOME: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                      <span class="s1">armazena_nome)</span>
+                       <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">CAD_CPF: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                     <span class="s1">armazena_cpf)</span>
+                      <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">CAD_CEP: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                     <span class="s1">armazena_cep)</span>
+                      <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">VALID_RUA:[MessageHandler(Filters.regex(</span><span class="s4">'^(SIM)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">pass_numero)</span><span class="s3">,</span>
+                             <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(NÃO)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">troca_rua)</span>
+                       <span class="s1">]</span><span class="s3">,</span>
+            <span class="s1">DIGITA_NUMERO:[MessageHandler(Filters.text</span><span class="s3">,</span>
+                                        <span class="s1">armazena_numero)</span>
+                         <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">TROCA_RUA:[MessageHandler(Filters.text</span><span class="s3">,</span>
+                                        <span class="s1">guarda_rua)</span>
+                    <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">DIGITA_COMPLEMENTO:[MessageHandler(Filters.text</span><span class="s3">,</span>
+                                        <span class="s1">armazena_complemento)</span>
+
+                         <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">CAD_GENERO: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                        <span class="s1">armazena_genero)</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">CAD_IDADE: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                       <span class="s1">armazena_idade)</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">CAD_TEL: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                     <span class="s1">armazena_tel)</span>
+                      <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s2"># Post registration interactions</span>
+            <span class="s1">PRIM_INTERACAO: [MessageHandler(Filters.regex(</span><span class="s4">'^(QUANTAS 🍕 ❓)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">dimensionamento_choice)</span><span class="s3">,</span>
+                             <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(CARDÁPIO ✏)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">cardapio_choice)</span><span class="s3">,</span>
+                             <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(INFORMAÇÕES 💡)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">infos_choice)</span><span class="s3">,</span>
+                             <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(CADASTRO 📑)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                           <span class="s1">altera_cadastro)</span><span class="s3">,</span>
+                             <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(FINALIZAR 🙋)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">final_final)</span>
+                             <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s2"># Calculator interactions</span>
+            <span class="s1">PRIM_ITERACAO_DIGITE: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                                  <span class="s1">dimensionamento_homem)</span><span class="s3">,</span>
+                                   <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">PRIM_ITERACAO_DIGITE2: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                                   <span class="s1">dimensionamento_mulher)</span><span class="s3">,</span>
+                                    <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">PRIM_ITERACAO_DIGITE3: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                                   <span class="s1">dimensionamento_crianca)</span><span class="s3">,</span>
+                                    <span class="s1">]</span><span class="s3">,</span>
+
+
+
+            <span class="s2"># Menu interactions</span>
+            <span class="s1">CARDAPIO_OPCOES: [MessageHandler(Filters.regex(</span><span class="s4">'^(TRADICIONAIS 🍕)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                             <span class="s1">tamanhos)</span><span class="s3">,</span>
+                              <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(DOCES 🍫)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                             <span class="s1">opcoes_doces)</span><span class="s3">,</span>
+                              <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'(^BEBIDAS 🥤)'</span><span class="s1">)</span><span class="s3">,</span>
+                                             <span class="s1">opcoes_bebidas)</span>
+                              <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">TAMANHO: [MessageHandler(Filters.regex(</span><span class="s4">'^(GRANDE - 8 PEDAÇOS)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                     <span class="s1">sabores)</span><span class="s3">,</span>
+                      <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(BROTO - 4 PEDAÇOS)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                     <span class="s1">sabores)</span>
+                      <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">NUM_SABORES: [MessageHandler(Filters.regex(</span><span class="s4">'^(1 SABOR)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">opcoes_pizzas)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(2 SABORES)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">opcoes_pizzas)</span>
+                          <span class="s1">]</span><span class="s3">, </span>
+
+
+            <span class="s2"># Interactions to add or finalize order</span>
+            <span class="s1">ADICIONAR: [MessageHandler(Filters.regex(</span><span class="s4">'^(ADICIONAR ☝)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">cardapio_choice)</span><span class="s3">,</span>
+                        <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(REMOVER ❌)'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">remove_item)</span><span class="s3">,</span>
+                        <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(FINALIZAR PEDIDO ✅)'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">fim_pedido)</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">FINALIZAR_COMPRA:[MessageHandler(Filters.regex(</span><span class="s4">'^(ADICIONAR ☝)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">cardapio_choice)</span><span class="s3">,</span>
+                        <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(REMOVER ❌)'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">remove_item)</span><span class="s3">,</span>
+                        <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(CONFIRMAR COMPRA ✅)'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">observacao)</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">OBSERVACAO: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                        <span class="s1">salva_obs)</span>
+                         <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">CONFIRMACAO:[MessageHandler(Filters.regex(</span><span class="s4">'^(SIM!)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">pgto_obs)</span><span class="s3">,</span>
+                             <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(NÃO!)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">troca_rua)</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">FORMAS_PGTO: [MessageHandler(Filters.regex(</span><span class="s4">'^(CRÉDITO)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">forma_pagto)</span><span class="s3">,</span>
+
+                            <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(DÉBITO)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                            <span class="s1">forma_pagto)</span><span class="s3">,</span>
+
+                            <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(DINHEIRO)'</span><span class="s1">)</span><span class="s3">,</span>
+                                       <span class="s1">forma_pagto)</span>
+                            <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">TROCO_PARA: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                           <span class="s1">guarda_troco)</span>
+                            <span class="s1">]</span><span class="s3">,</span>
+
+
+            <span class="s1">FIM_PEDIDO: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                        <span class="s1">fim)</span><span class="s3">,</span>
+                         <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">QTD_PEDIDO: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                       <span class="s1">quantidades)</span><span class="s3">,</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">ADD_ITEM: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                         <span class="s1">add_item)</span><span class="s3">,</span>
+                          <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">NOTA_PIZZA: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                      <span class="s1">nota_pizza)</span><span class="s3">,</span>
+                       <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s2"># Interactions for text identification</span>
+            <span class="s1">MOTIVO_FIM: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                        <span class="s1">nlp)</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">TESTE: [MessageHandler(Filters.text</span><span class="s3">,</span>
+                                   <span class="s1">nlp2)]</span><span class="s3">,</span>
+                    <span class="s1">ConversationHandler.TIMEOUT:[MessageHandler(Filters.text</span><span class="s3">,</span>
+                                    <span class="s1">timeout)</span>
+                        <span class="s1">]</span><span class="s3">,</span>
+
+            <span class="s1">ALTERAR_CAD: [MessageHandler(Filters.regex(</span><span class="s4">'^(NOME)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(CPF)$'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(NASCIMENTO)'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(CEP)'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(RUA)'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(NUMERO)'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(COMPLEMENTO)'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(TELEFONE)'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">MessageHandler(Filters.regex(</span><span class="s4">'^(GENERO)'</span><span class="s1">)</span><span class="s3">,</span>
+                                         <span class="s1">forma_pagto)</span><span class="s3">,</span>
+                          <span class="s1">]</span><span class="s3">,</span>
+        <span class="s1">}</span><span class="s3">,</span>
+
+        <span class="s1">fallbacks=[MessageHandler(Filters.text &amp; end_filter</span><span class="s3">, </span><span class="s1">final_final)]</span><span class="s3">,</span>
+
+        <span class="s1">conversation_timeout=</span><span class="s5">40000</span>
+
+    <span class="s1">)</span>
+
+    <span class="s2"># Handler for post-order timer</span>
+    <span class="s1">dp.add_handler(CommandHandler(</span><span class="s4">'set'</span><span class="s3">,</span><span class="s1">set_timer))</span>
+
+    <span class="s2"># Button Handler</span>
+    <span class="s1">dp.add_handler(conv_handler)</span>
+
+    <span class="s2"># Error log</span>
+    <span class="s1">dp.add_error_handler(error)</span>
+    <span class="s1">updater.start_polling()</span>
+    <span class="s1">updater.idle()</span>
+
+<span class="s3">if </span><span class="s1">__name__ == </span><span class="s4">'__main__'</span><span class="s1">:</span>
+    <span class="s1">main()</span>
+</pre>
+</body>
+</html>
