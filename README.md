@@ -28,4 +28,5 @@ In the ".py" file you can analyze the implementation of the Bot and use of the m
 * The database was not archived before this project and the owner did not have too much information to make better decisions;
 * Now all the information available helps him in his executive decisions.
 
+![PRINT_EXAMPLES](image_1.jpeg)
 
