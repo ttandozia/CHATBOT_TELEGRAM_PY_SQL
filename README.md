@@ -19,7 +19,7 @@ The BOW and TF-IDF was made with a tweet file.
 In the "Jupyter" file you will find the construction of the models.
 
 **Important:** 
-* The ".py" file with the bot's implementation and use of the models built in jupyter is not available here, since it was made for a client. If you want to see it in action, you can see some screenshots at the end of this MD. Also, you can send me a message so I start it for you.
+* The ".py" file with the bot's implementation and use of the models built in jupyter is not available here, since it was made for a client. If you want to see it in action, you can see some screenshots at the end of this MD. Also, you can send me a message so I start it for you. My e-mail is tanure.thiago@hotmail.com.
 * This project was built for a Brazilian client, so the features, objects, and models have their names in Portuguese.
 
 **Conclusions**
