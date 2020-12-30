@@ -30,7 +30,7 @@ In the "Jupyter" file you will find the construction of the models.
 * Now all the information available helps him in his executive decisions.
 
 
-Here you can see some prints as an example of the solution. As I mentioned before, the solution is in Portuguese since the client is from Brazil:
+Here you can see some prints as an example of the solution. As I mentioned before, the solution is in Portuguese since the client is from Brazil.
 
 
 <img src="./PRINT_EXAMPLES/image_1.jpeg" height="600" width="300"> | <img src="./PRINT_EXAMPLES/image_2.jpeg" height="600" width="300">
